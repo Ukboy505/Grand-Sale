@@ -319,7 +319,7 @@
     <script src="https://unpkg.com/web3@1.10.4/dist/web3.min.js"></script>
     <script>
         // Contract address (replace with actual deployed address)
-        const CONTRACT_ADDRESS = "0x09539f8b020094658d20b4fbdcbb237dafa9cd6c"; // Placeholder
+        const CONTRACT_ADDRESS = "0xf1a30058c22e2b6cd85994172a7cd87eff51c552"; // Placeholder
 
         // Grand Sale ABI (provided in the query)
         const GrandSaleABI = [
@@ -327,7 +327,7 @@
 		"inputs": [
 			{
 				"internalType": "address",
-				"name": "token",
+				"name": "_token",
 				"type": "address"
 			}
 		],
@@ -886,6 +886,64 @@
 		"name": "setReward",
 		"outputs": [],
 		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "token",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "totalBought",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "totalRaised",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "totalRewarded",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
 		"type": "function"
 	},
 	{
