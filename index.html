@@ -215,7 +215,7 @@
             <p>Contract Address: <span id="contract-address">Not Connected</span></p>
             <p>Sale Token: <span id="sale-token">Not Connected</span></p>
             <p>Minimum Buy to Reward: <span id="min-buy-to-reward">Not Connected</span></p>
-            <p>Total Bought: <span id="total-bought">Not Connected</span></p>
+            <p>Total Sold: <span id="total-sold">Not Connected</span></p>
             <p>Total Rewarded: <span id="total-rewarded">Not Connected</span></p>
             <div>
                 <h3>Check Payment Token Details</h3>
@@ -1032,7 +1032,7 @@
             document.getElementById('contract-address').textContent = 'Not Connected';
             document.getElementById('sale-token').textContent = 'Not Connected';
             document.getElementById('min-buy-to-reward').textContent = 'Not Connected';
-            document.getElementById('total-bought').textContent = 'Not Connected';
+            document.getElementById('total-sold').textContent = 'Not Connected';
             document.getElementById('total-rewarded').textContent = 'Not Connected';
             document.getElementById('payment-token-info').innerHTML = '';
             document.getElementById('contract-status').textContent = 'Unknown';
@@ -1058,12 +1058,12 @@
             try {
                 const saleToken = await contract.methods.token().call();
                 const minBuyToReward = await contract.methods.minBuyToReward().call();
-                const totalBought = await contract.methods.totalBought().call();
+                const totalSold = await contract.methods.totalSold().call();
                 const totalRewarded = await contract.methods.totalRewarded().call();
                 const paused = await contract.methods.paused().call();
                 document.getElementById('sale-token').textContent = saleToken;
                 document.getElementById('min-buy-to-reward').textContent = web3.utils.fromWei(minBuyToReward, 'ether');
-                document.getElementById('total-bought').textContent = web3.utils.fromWei(totalBought, 'ether');
+                document.getElementById('total-sold').textContent = web3.utils.fromWei(totalSold, 'ether');
                 document.getElementById('total-rewarded').textContent = web3.utils.fromWei(totalRewarded, 'ether');
                 document.getElementById('contract-status').textContent = paused ? 'Paused' : 'Unpaused';
             } catch (error) {
