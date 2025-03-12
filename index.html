@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grand Sale Contract UI</title>
+    <title>Grand Sale Contract UI (Polygon Amoy)</title>
     <style>
         body {
             font-family: 'Roboto', Arial, sans-serif;
@@ -269,6 +269,7 @@
         </div>
         <div id="user" class="section">
             <h2>User's Panel</h2>
+            <!-- Approval Section for ERC20 tokens -->
             <div>
                 <h3>Approve ERC20 Token</h3>
                 <select id="approve-token-select">
@@ -277,18 +278,14 @@
                 <input type="number" id="approve-amount" placeholder="Amount to Approve" step="0.01">
                 <button onclick="approveToken()">Approve</button>
             </div>
+            <!-- Unified Buy Section -->
             <div>
-                <h3>Buy with Native Currency</h3>
-                <input type="number" id="buy-native-amount" placeholder="Amount of MATIC" step="0.01">
-                <button onclick="buyWithNative()">Buy with MATIC</button>
-            </div>
-            <div>
-                <h3>Buy with ERC20 Token</h3>
-                <select id="buy-token-select">
+                <h3>Buy Tokens</h3>
+                <select id="payment-token-select">
                     <option value="">Select Payment Token</option>
                 </select>
-                <input type="number" id="buy-token-amount" placeholder="Payment Amount" step="0.01">
-                <button onclick="buyWithToken()">Buy with Token</button>
+                <input type="number" id="payment-amount" placeholder="Amount" step="0.01">
+                <button onclick="buyTokens()">Buy</button>
             </div>
             <div id="error-message" class="error"></div>
         </div>
@@ -324,9 +321,10 @@
     <script src="https://unpkg.com/web3@1.10.4/dist/web3.min.js"></script>
     <script>
         // Replace with your actual Grand Sale contract address on Polygon Amoy
-        const CONTRACT_ADDRESS = "0x65ed5aa09d34959214bdbb8b634e486081447e36"; // Placeholder
+        const CONTRACT_ADDRESS = "0x65ed5aa09d34959214bdbb8b634e486081447e36"; // Update this
 
-        const GrandSaleABI = [
+        // Placeholder ABIs - Replace with actual ABIs
+        const GrandSaleABI =  [
 	{
 		"inputs": [
 			{
@@ -919,22 +917,645 @@
 		"type": "receive"
 	}
 ];
-
+        
         const ERC20ABI = [
-            {"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},
-            {"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
-            {"inputs":[{"internalType":"address","name":"from","type":"address"},{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"}
-        ];
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_maticToken",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_testToken",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "initialOwner",
+				"type": "address"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			}
+		],
+		"name": "OwnableInvalidOwner",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "OwnableUnauthorizedAccount",
+		"type": "error"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			}
+		],
+		"name": "AddSupportedToken",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "addressAdded",
+				"type": "address"
+			}
+		],
+		"name": "AddToUnsupportedTokenWithdrawalWhitelist",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "MaticTokensAdded",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "previousOwner",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "OwnershipTransferred",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "buyer",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "PurchaseTokenDeposited",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "addressRemoved",
+				"type": "address"
+			}
+		],
+		"name": "RemoveFromUnsupportedTokenWithdrawalWhitelist",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			}
+		],
+		"name": "RemoveSupportedToken",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "price",
+				"type": "uint256"
+			}
+		],
+		"name": "SetBuyPrice",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "TestTokensAdded",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "buyer",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "TokensClaimed",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "buyer",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "TokensSent",
+		"type": "event"
+	},
+	{
+		"inputs": [],
+		"name": "CLAIM_DELAY",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "addMaticTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			}
+		],
+		"name": "addSupportedToken",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "addTestTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_address",
+				"type": "address"
+			}
+		],
+		"name": "addToUnsupportedTokenWithdrawalWhitelist",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "claimTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "depositTokens",
+		"outputs": [],
+		"stateMutability": "payable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getSupportedTokens",
+		"outputs": [
+			{
+				"internalType": "address[]",
+				"name": "",
+				"type": "address[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "maticToken",
+		"outputs": [
+			{
+				"internalType": "contract IERC20",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "paymentMethodsByToken",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "price",
+				"type": "uint256"
+			},
+			{
+				"internalType": "string",
+				"name": "name",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "purchaseTokenDeposits",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_address",
+				"type": "address"
+			}
+		],
+		"name": "removeFromUnsupportedTokenWithdrawalWhitelist",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			}
+		],
+		"name": "removeSupportedToken",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "renounceOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "price",
+				"type": "uint256"
+			}
+		],
+		"name": "setBuyPrice",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "supportedTokenList",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "supportedTokens",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "testToken",
+		"outputs": [
+			{
+				"internalType": "contract IERC20",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "tokenBalances",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "transferOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "unsupportedTokenWithdrawalWhitelist",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "withdrawMatic",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "withdrawSupportedTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "withdrawTest",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "token",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "withdrawUnsupportedTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+];
 
         let web3, contract, userAddress;
 
-        // Replace these placeholder addresses with your actual token addresses
+        // Update with actual token addresses and names
         const tokenNames = {
             "0x0000000000000000000000000000000000000000": "MATIC",
             "0x108a44bd8dcffd4e22024715b8b5e03943a6380b": "TEST2",
             "0x4e52bca64a88ac1f13b65b923216649c678cb405": "TEST3"
         };
 
+        /*** Logging Functions ***/
         function logAdmin(event, details, isSuccess = true) {
             const logBody = document.getElementById('admin-log-body');
             const row = document.createElement('tr');
@@ -972,6 +1593,7 @@
             }
         }
 
+        /*** Wallet Connection ***/
         document.getElementById('connect-wallet').addEventListener('click', async () => {
             if (!window.ethereum) {
                 showWalletInstructions();
@@ -1037,7 +1659,7 @@
             document.getElementById('payment-token-info').innerHTML = '';
             document.getElementById('contract-status').textContent = 'Unknown';
             document.getElementById('approve-token-select').innerHTML = '<option value="">Select Payment Token</option>';
-            document.getElementById('buy-token-select').innerHTML = '<option value="">Select Payment Token</option>';
+            document.getElementById('payment-token-select').innerHTML = '<option value="">Select Payment Token</option>';
             logAdmin('Wallet Disconnected', 'Disconnected successfully');
         });
 
@@ -1047,12 +1669,14 @@
             instructions.innerHTML = `<p>Please install MetaMask from <a href="https://metamask.io" target="_blank">metamask.io</a>.</p>`;
         }
 
+        /*** UI Navigation ***/
         function showSection(sectionId) {
             document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
             document.getElementById(sectionId).classList.add('active');
             logAdmin('Section Changed', `Switched to ${sectionId}`);
         }
 
+        /*** Contract Info and Dropdown Updates ***/
         async function updateContractInfo() {
             if (!contract) return;
             try {
@@ -1075,22 +1699,26 @@
             if (!contract) return;
             try {
                 const approveSelect = document.getElementById('approve-token-select');
-                const buySelect = document.getElementById('buy-token-select');
+                const paymentSelect = document.getElementById('payment-token-select');
                 approveSelect.innerHTML = '<option value="">Select Payment Token</option>';
-                buySelect.innerHTML = '<option value="">Select Payment Token</option>';
+                paymentSelect.innerHTML = '<option value="">Select Payment Token</option>';
 
-                for (const [address, name] of Object.entries(tokenNames)) {
-                    const isPaymentToken = await contract.methods.isPaymentToken(address).call();
-                    if (isPaymentToken) {
-                        const optionApprove = document.createElement('option');
-                        optionApprove.value = address;
-                        optionApprove.textContent = name;
-                        approveSelect.appendChild(optionApprove);
+                for (const address of Object.keys(tokenNames)) {
+                    const tokenInfo = await contract.methods.paymentTokens(address).call();
+                    if (tokenInfo.isAccepted) {
+                        // Add to payment dropdown (includes MATIC if accepted)
+                        const optionPayment = document.createElement('option');
+                        optionPayment.value = address;
+                        optionPayment.textContent = tokenNames[address];
+                        paymentSelect.appendChild(optionPayment);
 
-                        const optionBuy = document.createElement('option');
-                        optionBuy.value = address;
-                        optionBuy.textContent = name;
-                        buySelect.appendChild(optionBuy);
+                        // Add to approve dropdown only if not MATIC
+                        if (address !== "0x0000000000000000000000000000000000000000") {
+                            const optionApprove = document.createElement('option');
+                            optionApprove.value = address;
+                            optionApprove.textContent = tokenNames[address];
+                            approveSelect.appendChild(optionApprove);
+                        }
                     }
                 }
             } catch (error) {
@@ -1098,29 +1726,29 @@
             }
         }
 
+        /*** Home Section Functions ***/
         async function checkPaymentToken() {
             if (!contract) return showError('home', 'Please connect your wallet first!');
             const paymentToken = document.getElementById('payment-token-check').value.trim();
             if (!web3.utils.isAddress(paymentToken)) return showError('home', 'Invalid payment token address');
             try {
-                const isPaymentToken = await contract.methods.isPaymentToken(paymentToken).call();
-                if (!isPaymentToken) {
+                const tokenInfo = await contract.methods.paymentTokens(paymentToken).call();
+                if (!tokenInfo.isAccepted) {
                     document.getElementById('payment-token-info').innerHTML = 'Not a valid payment token';
                     return;
                 }
-                const rate = await contract.methods.rates(paymentToken).call();
-                const reward = await contract.methods.rewards(paymentToken).call();
-                const totalRaised = await contract.methods.totalRaised(paymentToken).call();
                 document.getElementById('payment-token-info').innerHTML = `
-                    <p>Rate: ${rate} sale tokens per payment token unit</p>
-                    <p>Reward Percentage: ${reward}%</p>
-                    <p>Total Raised: ${web3.utils.fromWei(totalRaised, 'ether')} ${tokenNames[paymentToken] || 'Unknown'}</p>
+                    <p>Accepted: ${tokenInfo.isAccepted}</p>
+                    <p>Rate: ${tokenInfo.rate} sale tokens per payment token unit</p>
+                    <p>Reward Percentage: ${tokenInfo.reward}%</p>
+                    <p>Total Raised: ${web3.utils.fromWei(tokenInfo.totalRaised, 'ether')} ${tokenNames[paymentToken] || 'Unknown'}</p>
                 `;
             } catch (error) {
                 showError('home', "Error checking payment token: " + error.message);
             }
         }
 
+        /*** Owner's Panel Functions ***/
         async function addPaymentToken() {
             if (!contract) return showError('owner', 'Please connect your wallet first!');
             const paymentToken = document.getElementById('payment-token-address').value.trim();
@@ -1283,7 +1911,7 @@
                 document.getElementById('tx-status').textContent = 'Pending...';
                 const gasPrice = await web3.eth.getGasPrice();
                 const weiAmount = web3.utils.toWei(amount, 'ether');
-                const tx = await contract.methods.withdraw(tokenAddress, weiAmount).send({ from: userAddress, gasPrice });
+                const tx = await contract.methods.withdraw(tokenAddress, weiAmount).send({ from: userAddress, gasPrice, value: 0 });
                 document.getElementById('tx-status').innerHTML = `Success! Tx: <a href="https://amoy.polygonscan.com/tx/${tx.transactionHash}" target="_blank">${tx.transactionHash}</a>`;
                 logAdmin('Withdraw Success', `Withdrew ${amount} from ${tokenAddress} - Tx: ${tx.transactionHash}`);
             } catch (error) {
@@ -1292,6 +1920,7 @@
             }
         }
 
+        /*** User's Panel Functions ***/
         async function approveToken() {
             if (!contract) return showError('user', 'Please connect your wallet first!');
             const paymentToken = document.getElementById('approve-token-select').value;
@@ -1309,38 +1938,49 @@
             }
         }
 
-        async function buyWithNative() {
+        async function buyTokens() {
             if (!contract) return showError('user', 'Please connect your wallet first!');
-            const amount = document.getElementById('buy-native-amount').value;
-            if (!amount || parseFloat(amount) <= 0) return showError('user', 'Invalid amount');
-            try {
-                const weiAmount = web3.utils.toWei(amount, 'ether');
-                const gasPrice = await web3.eth.getGasPrice();
-                const tx = await contract.methods.buyWithNative().send({ from: userAddress, value: weiAmount, gasPrice });
-                logUser('Buy with MATIC Success', `Bought with ${amount} MATIC - Tx: ${tx.transactionHash}`);
-                updateContractInfo();
-            } catch (error) {
-                showError('user', "Buy with MATIC failed: " + error.message);
-            }
-        }
+            const paymentToken = document.getElementById('payment-token-select').value;
+            const paymentAmount = document.getElementById('payment-amount').value;
 
-        async function buyWithToken() {
-            if (!contract) return showError('user', 'Please connect your wallet first!');
-            const paymentToken = document.getElementById('buy-token-select').value;
-            const paymentAmount = document.getElementById('buy-token-amount').value;
             if (!paymentToken) return showError('user', 'Please select a payment token');
-            if (!paymentAmount || parseFloat(paymentAmount) <= 0) return showError('user', 'Invalid payment amount');
+            if (!paymentAmount || parseFloat(paymentAmount) <= 0) 
+                return showError('user', 'Invalid payment amount');
+
             try {
                 const weiAmount = web3.utils.toWei(paymentAmount, 'ether');
                 const gasPrice = await web3.eth.getGasPrice();
-                const tx = await contract.methods.buyWithToken(paymentToken, weiAmount).send({ from: userAddress, gasPrice });
-                logUser('Buy with Token Success', `Bought with ${paymentAmount} of ${tokenNames[paymentToken]} - Tx: ${tx.transactionHash}`);
+
+                if (paymentToken === "0x0000000000000000000000000000000000000000") {
+                    // Buy with MATIC (native currency)
+                    const tx = await contract.methods.buyWithNative().send({
+                        from: userAddress,
+                        value: weiAmount,
+                        gasPrice
+                    });
+                    logUser('Buy Success', `Bought with ${paymentAmount} MATIC - Tx: ${tx.transactionHash}`);
+                } else {
+                    // Check allowance for ERC20 token
+                    const tokenContract = new web3.eth.Contract(ERC20ABI, paymentToken);
+                    const allowance = await tokenContract.methods.allowance(userAddress, CONTRACT_ADDRESS).call();
+                    if (BigInt(allowance) < BigInt(weiAmount)) {
+                        showError('user', 'Insufficient allowance. Please approve first.');
+                        return;
+                    }
+                    // Buy with ERC20 token
+                    const tx = await contract.methods.buyWithToken(paymentToken, weiAmount).send({
+                        from: userAddress,
+                        gasPrice
+                    });
+                    logUser('Buy Success', `Bought with ${paymentAmount} ${tokenNames[paymentToken]} - Tx: ${tx.transactionHash}`);
+                }
                 updateContractInfo();
             } catch (error) {
-                showError('user', "Buy with token failed: " + error.message);
+                showError('user', "Buy failed: " + error.message);
             }
         }
 
+        /*** Event Listeners ***/
         function setupEventListeners() {
             contract.events.PaymentTokenAdded({ fromBlock: 'latest' })
                 .on('data', (event) => {
@@ -1372,8 +2012,6 @@
                 });
             contract.events.Withdrawn({ fromBlock: 'latest' })
                 .on('data', (event) => logAdmin('Withdrawn', `${web3.utils.fromWei(event.returnValues.amount, 'ether')} from ${event.returnValues.token}`));
-            contract.events.Approved({ fromBlock: 'latest' })
-                .on('data', (event) => logUser('Approved', `${web3.utils.fromWei(event.returnValues.amount, 'ether')} of ${tokenNames[event.returnValues.paymentToken] || event.returnValues.paymentToken} by ${event.returnValues.approver}`));
             contract.events.TokenPurchased({ fromBlock: 'latest' })
                 .on('data', (event) => {
                     logUser('Token Purchased', `Buyer: ${event.returnValues.buyer}, Tokens: ${web3.utils.fromWei(event.returnValues.tokenAmount, 'ether')}, Paid: ${web3.utils.fromWei(event.returnValues.paymentAmount, 'ether')}`);
@@ -1388,6 +2026,16 @@
                 .on('data', (event) => logUser('Not Eligible', `Buyer: ${event.returnValues.buyer}, Tokens: ${web3.utils.fromWei(event.returnValues.tokenAmount, 'ether')}`));
             contract.events.FundsSecured({ fromBlock: 'latest' })
                 .on('data', (event) => logUser('Funds Secured', `Owner: ${event.returnValues.owner}, Amount: ${web3.utils.fromWei(event.returnValues.paymentAmount, 'ether')}`));
+            contract.events.Paused({ fromBlock: 'latest' })
+                .on('data', (event) => {
+                    logAdmin('Contract Paused', `Paused by ${event.returnValues.account}`);
+                    updateContractInfo();
+                });
+            contract.events.Unpaused({ fromBlock: 'latest' })
+                .on('data', (event) => {
+                    logAdmin('Contract Unpaused', `Unpaused by ${event.returnValues.account}`);
+                    updateContractInfo();
+                });
         }
 
         logAdmin('Page Loaded', 'DApp initialized');
