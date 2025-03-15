@@ -214,7 +214,7 @@
                 const name = await tokenContract.methods.name().call();
                 const symbol = await tokenContract.methods.symbol().call();
                 const decimals = await tokenContract.methods.decimals().call();
-                const info = { name, symbol, decimals };
+                const info = { name, symbol, decimals: Number(decimals) };
                 tokenInfoMap.set(tokenAddress, info);
                 return info;
             } catch (error) {
@@ -287,13 +287,16 @@
         async function switchAccount(selectedAccount) {
             try {
                 if (!web3) return;
-                userAddress = selectedAccount;
+                // Attempt to request permissions to prompt MetaMask to switch accounts
                 await window.ethereum.request({
                     method: 'wallet_requestPermissions',
                     params: [{ eth_accounts: {} }]
                 });
+                userAddress = selectedAccount;
                 await initializeAfterConnect();
                 logAdmin('Account Switched', `Switched to ${userAddress}`);
+                // Note: MetaMask active account switching is not fully programmatic; user may need to confirm
+                showTxStatus('home', 'Account switched in DApp. Ensure this account is active in MetaMask.');
             } catch (error) {
                 showError('home', getErrorMessage(error));
             }
@@ -373,7 +376,10 @@
                 if (account === userAddress) option.selected = true;
                 select.appendChild(option);
             });
-            select.addEventListener('change', (event) => switchAccount(event.target.value));
+            select.addEventListener('change', async (event) => {
+                const newAccount = event.target.value;
+                if (newAccount && newAccount !== userAddress) await switchAccount(newAccount);
+            });
         }
 
         async function initializeAfterConnect() {
@@ -440,10 +446,10 @@
                 const tokenInfo = await getTokenInfo(saleTokenAddress);
                 saleTokenName = tokenInfo.name;
                 document.getElementById('sale-token').textContent = `${tokenInfo.name} (${saleTokenAddress})`;
-                document.getElementById('total-unsold').textContent = web3.utils.fromWei(totalUnsold, 'ether');
-                document.getElementById('min-buy-to-reward').textContent = web3.utils.fromWei(minBuyToReward, 'ether');
-                document.getElementById('total-sold').textContent = web3.utils.fromWei(totalSold, 'ether');
-                document.getElementById('total-rewarded').textContent = web3.utils.fromWei(totalRewarded, 'ether');
+                document.getElementById('total-unsold').textContent = fromWeiToToken(totalUnsold, tokenInfo.decimals);
+                document.getElementById('min-buy-to-reward').textContent = fromWeiToToken(minBuyToReward, tokenInfo.decimals);
+                document.getElementById('total-sold').textContent = fromWeiToToken(totalSold, tokenInfo.decimals);
+                document.getElementById('total-rewarded').textContent = fromWeiToToken(totalRewarded, tokenInfo.decimals);
                 document.getElementById('contract-status').textContent = paused ? 'Paused' : 'Unpaused';
                 updateSaleTokenDisplay();
             } catch (error) {
@@ -461,7 +467,8 @@
             try {
                 const saleTokenContract = new web3.eth.Contract(ERC20ABI, saleTokenAddress);
                 const balance = await saleTokenContract.methods.balanceOf(userAddress).call();
-                document.getElementById('user-sale-balance').textContent = web3.utils.fromWei(balance, 'ether');
+                const tokenInfo = await getTokenInfo(saleTokenAddress);
+                document.getElementById('user-sale-balance').textContent = fromWeiToToken(balance, tokenInfo.decimals);
             } catch (error) {
                 showError('user', getErrorMessage(error));
             }
@@ -476,6 +483,7 @@
                     const tokenInfo = await contract.methods.paymentTokens(tokenAddress).call();
                     if (tokenInfo.isAccepted) tokenAddresses.add(tokenAddress);
                 }
+                tokenAddresses.add(NATIVE_TOKEN_ADDRESS); // Ensure native token is always available
                 for (const [id, includeNative] of Object.entries(dropdowns)) {
                     const select = document.getElementById(id);
                     select.innerHTML = '<option value="">Select Payment Token</option>';
@@ -505,7 +513,7 @@
                         const info = await getTokenInfo(address);
                         const option = document.createElement('option');
                         option.value = address;
-                        option.textContent = `${info.name} (${info.symbol}) - Balance: ${web3.utils.fromWei(balance, 'ether')}`;
+                        option.textContent = `${info.name} (${info.symbol}) - Balance: ${fromWeiToToken(balance, info.decimals)}`;
                         select.appendChild(option);
                     }
                 }
@@ -520,17 +528,34 @@
         }
 
         async function calculateTokens(paymentAmount, paymentToken) {
-            if (!contract || !paymentAmount || !paymentToken) return "0";
+            if (!contract || !paymentAmount || parseFloat(paymentAmount) <= 0 || !paymentToken) return "0";
             try {
+                const paymentTokenInfo = await getTokenInfo(paymentToken);
+                const paymentDecimals = paymentTokenInfo.decimals;
+                const paymentWei = BigInt(Math.floor(parseFloat(paymentAmount) * (10 ** paymentDecimals)));
+                
                 const tokenInfo = await contract.methods.paymentTokens(paymentToken).call();
                 if (!tokenInfo.isAccepted || tokenInfo.rate == 0) return "0";
-                const weiAmount = web3.utils.toWei(paymentAmount.toString(), 'ether');
-                const tokenAmount = (BigInt(weiAmount) * BigInt(tokenInfo.rate)) / BigInt(10**18);
-                return web3.utils.fromWei(tokenAmount.toString(), 'ether');
+                
+                const tokenAmountWei = paymentWei * BigInt(tokenInfo.rate);
+                
+                const saleTokenInfo = await getTokenInfo(saleTokenAddress);
+                const saleDecimals = saleTokenInfo.decimals;
+                
+                return fromWeiToToken(tokenAmountWei, saleDecimals);
             } catch (error) {
                 console.error("Error calculating tokens:", error);
                 return "0";
             }
+        }
+
+        function fromWeiToToken(weiAmount, decimals) {
+            const bn = BigInt(weiAmount);
+            const divisor = BigInt(10 ** decimals);
+            const integerPart = bn / divisor;
+            const fractionalPart = bn % divisor;
+            const fractionalStr = fractionalPart.toString().padStart(decimals, '0').slice(0, 6); // Show up to 6 decimal places
+            return `${integerPart}.${fractionalStr}`;
         }
 
         function setupBuySectionListeners() {
@@ -543,7 +568,11 @@
                 const paymentToken = paymentTokenSelect.value;
                 if (paymentAmount && paymentToken && parseFloat(paymentAmount) > 0) {
                     const tokens = await calculateTokens(paymentAmount, paymentToken);
-                    calculatedTokensDisplay.textContent = tokens === "0" ? 'Invalid token or rate not set' : `You will receive: ${tokens} ${saleTokenName}`;
+                    if (tokens === "0") {
+                        calculatedTokensDisplay.textContent = 'Invalid payment token or rate not set.';
+                    } else {
+                        calculatedTokensDisplay.textContent = `You will receive: ${tokens} ${saleTokenName}`;
+                    }
                 } else {
                     calculatedTokensDisplay.textContent = '';
                 }
@@ -569,7 +598,7 @@
                     <p>Accepted: ${tokenInfo.isAccepted}</p>
                     <p>Rate: ${tokenInfo.rate} sale tokens per payment token unit</p>
                     <p>Reward Percentage: ${tokenInfo.reward}%</p>
-                    <p>Total Raised: ${web3.utils.fromWei(tokenInfo.totalRaised, 'ether')} ${tokenDetails.symbol}</p>
+                    <p>Total Raised: ${fromWeiToToken(tokenInfo.totalRaised, tokenDetails.decimals)} ${tokenDetails.symbol}</p>
                 `;
             } catch (error) {
                 showError('home', getErrorMessage(error));
@@ -719,7 +748,8 @@
             try {
                 showTxStatus('owner', 'Pending...');
                 const gasPrice = await web3.eth.getGasPrice();
-                const weiAmount = web3.utils.toWei(minBuy, 'ether');
+                const saleTokenInfo = await getTokenInfo(saleTokenAddress);
+                const weiAmount = BigInt(Math.floor(parseFloat(minBuy) * (10 ** saleTokenInfo.decimals)));
                 const tx = await contract.methods.setMinBuyToReward(weiAmount).send({ from: userAddress, gasPrice });
                 showTxStatus('owner', `Success! Tx: ${tx.transactionHash}`);
                 logAdmin('Min Buy Set', `Set minimum buy to ${minBuy} - Tx: ${tx.transactionHash}`);
@@ -776,9 +806,10 @@
             try {
                 showTxStatus('owner', 'Pending...');
                 const gasPrice = await web3.eth.getGasPrice();
-                const weiAmount = web3.utils.toWei(amount, 'ether');
+                const tokenInfo = await getTokenInfo(tokenAddress);
+                const weiAmount = BigInt(Math.floor(parseFloat(amount) * (10 ** tokenInfo.decimals)));
                 let balance = tokenAddress === NATIVE_TOKEN_ADDRESS ? await web3.eth.getBalance(CONTRACT_ADDRESS) : await new web3.eth.Contract(ERC20ABI, tokenAddress).methods.balanceOf(CONTRACT_ADDRESS).call();
-                if (BigInt(balance) < BigInt(weiAmount)) {
+                if (BigInt(balance) < weiAmount) {
                     showTxStatus('owner', '');
                     return showError('owner', 'Insufficient balance in contract');
                 }
@@ -801,16 +832,16 @@
             try {
                 showTxStatus('user', 'Pending...');
                 const tokenContract = new web3.eth.Contract(ERC20ABI, paymentToken);
-                const weiAmount = web3.utils.toWei(amount, 'ether');
+                const tokenInfo = await getTokenInfo(paymentToken);
+                const weiAmount = BigInt(Math.floor(parseFloat(amount) * (10 ** tokenInfo.decimals)));
                 const balance = await tokenContract.methods.balanceOf(userAddress).call();
-                if (BigInt(balance) < BigInt(weiAmount)) {
+                if (BigInt(balance) < weiAmount) {
                     showTxStatus('user', '');
                     return showError('user', 'Insufficient balance');
                 }
                 const gasPrice = await web3.eth.getGasPrice();
                 const tx = await tokenContract.methods.approve(CONTRACT_ADDRESS, weiAmount).send({ from: userAddress, gasPrice });
                 showTxStatus('user', `Success! Tx: ${tx.transactionHash}`);
-                const tokenInfo = await getTokenInfo(paymentToken);
                 logUser('Approve Success', `Approved ${amount} of ${tokenInfo.name} - Tx: ${tx.transactionHash}`);
             } catch (error) {
                 showTxStatus('user', '');
@@ -826,12 +857,13 @@
             if (!paymentAmount || parseFloat(paymentAmount) <= 0) return showError('user', 'Payment amount must be greater than 0');
             try {
                 showTxStatus('user', 'Pending...');
-                const weiAmount = web3.utils.toWei(paymentAmount, 'ether');
+                const tokenInfo = await getTokenInfo(paymentToken);
+                const weiAmount = BigInt(Math.floor(parseFloat(paymentAmount) * (10 ** tokenInfo.decimals)));
                 const gasPrice = await web3.eth.getGasPrice();
                 let tx;
                 if (paymentToken === NATIVE_TOKEN_ADDRESS) {
                     const balance = await web3.eth.getBalance(userAddress);
-                    if (BigInt(balance) < BigInt(weiAmount)) {
+                    if (BigInt(balance) < weiAmount) {
                         showTxStatus('user', '');
                         return showError('user', 'Insufficient POL balance');
                     }
@@ -840,17 +872,16 @@
                 } else {
                     const tokenContract = new web3.eth.Contract(ERC20ABI, paymentToken);
                     const balance = await tokenContract.methods.balanceOf(userAddress).call();
-                    if (BigInt(balance) < BigInt(weiAmount)) {
+                    if (BigInt(balance) < weiAmount) {
                         showTxStatus('user', '');
                         return showError('user', 'Insufficient token balance');
                     }
                     const allowance = await tokenContract.methods.allowance(userAddress, CONTRACT_ADDRESS).call();
-                    if (BigInt(allowance) < BigInt(weiAmount)) {
+                    if (BigInt(allowance) < weiAmount) {
                         showTxStatus('user', '');
                         return showError('user', 'Insufficient allowance. Please approve first.');
                     }
                     tx = await contract.methods.buyWithToken(paymentToken, weiAmount).send({ from: userAddress, gasPrice });
-                    const tokenInfo = await getTokenInfo(paymentToken);
                     logUser('Buy Success', `Bought with ${paymentAmount} ${tokenInfo.name} - Tx: ${tx.transactionHash}`);
                 }
                 showTxStatus('user', `Success! Tx: ${tx.transactionHash}`);
@@ -871,9 +902,10 @@
             try {
                 showTxStatus('user', 'Pending...');
                 const saleTokenContract = new web3.eth.Contract(ERC20ABI, saleTokenAddress);
-                const weiAmount = web3.utils.toWei(amount, 'ether');
+                const tokenInfo = await getTokenInfo(saleTokenAddress);
+                const weiAmount = BigInt(Math.floor(parseFloat(amount) * (10 ** tokenInfo.decimals)));
                 const balance = await saleTokenContract.methods.balanceOf(userAddress).call();
-                if (BigInt(balance) < BigInt(weiAmount)) {
+                if (BigInt(balance) < weiAmount) {
                     showTxStatus('user', '');
                     return showError('user', 'Insufficient sale token balance');
                 }
@@ -905,19 +937,11 @@
             contract.events.RateRemoved({ fromBlock: 'latest' })
                 .on('data', (event) => logAdmin('Rate Removed', `Removed rate for ${event.returnValues.paymentToken}`));
             contract.events.RewardSet({ fromBlock: 'latest' })
-                .on('data', (event) => logAdmin('Reward Set', `Set ${event.returnValues.reward}% for ${event.returnValues.paymentToken}`));
+                .on('data', (event) => logAdmin('Reward Set', `Reward ${event.returnValues.reward}% for ${event.returnValues.paymentToken}`));
             contract.events.RewardRemoved({ fromBlock: 'latest' })
                 .on('data', (event) => logAdmin('Reward Removed', `Removed reward for ${event.returnValues.paymentToken}`));
-            contract.events.MinBuyToRewardSet({ fromBlock: 'latest' })
-                .on('data', (event) => logAdmin('Min Buy Set', `Set to ${web3.utils.fromWei(event.returnValues.minBuyToReward, 'ether')}`));
-            contract.events.MinBuyToRewardRemoved({ fromBlock: 'latest' })
-                .on('data', (event) => logAdmin('Min Buy Removed', 'Minimum buy requirement removed'));
             contract.events.TokenPurchased({ fromBlock: 'latest' })
-                .on('data', (event) => logUser('Token Purchased', `Bought ${web3.utils.fromWei(event.returnValues.tokenAmount, 'ether')} tokens with ${web3.utils.fromWei(event.returnValues.paymentAmount, 'ether')}`));
-            contract.events.RewardGranted({ fromBlock: 'latest' })
-                .on('data', (event) => logUser('Reward Granted', `Received ${web3.utils.fromWei(event.returnValues.rewardAmount, 'ether')} reward for ${event.returnValues.paymentToken}`));
-            contract.events.Withdrawn({ fromBlock: 'latest' })
-                .on('data', (event) => logAdmin('Withdrawn', `Withdrew ${web3.utils.fromWei(event.returnValues.amount, 'ether')} from ${event.returnValues.token}`));
+                .on('data', (event) => logUser('Token Purchased', `Buyer ${event.returnValues.buyer} bought ${fromWeiToToken(event.returnValues.tokenAmount, (await getTokenInfo(saleTokenAddress)).decimals)} tokens`));
         }
     </script>
 </body>
